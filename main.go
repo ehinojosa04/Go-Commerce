@@ -1,15 +1,16 @@
 package main
 
 import (
-    "fmt"
-    "os"
-    tea "charm.land/bubbletea/v2"
+	"fmt"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 type model struct {
-    choices  []string           // items on the to-do list
-    cursor   int                // which to-do list item our cursor is pointing at
-    selected map[int]struct{}   // which to-do items are selected
+	choices  []string         // items on the to-do list
+	cursor   int              // which to-do list item our cursor is pointing at
+	selected map[int]struct{} // which to-do items are selected
 }
 
 func initialModel() model {
@@ -20,68 +21,65 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-    return nil
+	return nil
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-    switch msg := msg.(type) {
+	switch msg := msg.(type) {
 
-    case tea.KeyPressMsg:
-        switch msg.String() {
+	case tea.KeyPressMsg:
+		switch msg.String() {
 
-        case "ctrl+c", "q":
-            return m, tea.Quit
+		case "ctrl+c", "q":
+			return m, tea.Quit
 
-        case "up", "k":
-            if m.cursor > 0 {
-                m.cursor--
-            }
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
 
-        case "down", "j":
-            if m.cursor < len(m.choices)-1 {
-                m.cursor++
-            }
+		case "down", "j":
+			if m.cursor < len(m.choices)-1 {
+				m.cursor++
+			}
 
-        case "enter", "space":
-            _, ok := m.selected[m.cursor]
-            if ok {
-                delete(m.selected, m.cursor)
-            } else {
-                m.selected[m.cursor] = struct{}{}
-            }
-        }
-    }
+		case "enter", "space":
+			_, ok := m.selected[m.cursor]
+			if ok {
+				delete(m.selected, m.cursor)
+			} else {
+				m.selected[m.cursor] = struct{}{}
+			}
+		}
+	}
 
-    return m, nil
+	return m, nil
 }
 
 func (m model) View() tea.View {
-    s := "What should we buy at the market?\n\n"
+	var s strings.Builder
+	s.WriteString("What should we buy at the market?\n\n")
 
-    for i, choice := range m.choices {
+	for i, choice := range m.choices {
 
-        cursor := " " // no cursor
-        if m.cursor == i {
-            cursor = ">" // cursor!
-        }
+		cursor := " " // no cursor
+		if m.cursor == i {
+			cursor = ">" // cursor!
+		}
 
-        checked := " " // not selected
-        if _, ok := m.selected[i]; ok {
-            checked = "x" // selected!
-        }
+		checked := " " // not selected
+		if _, ok := m.selected[i]; ok {
+			checked = "x" // selected!
+		}
 
-        s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
-    }
+		fmt.Fprintf(&s, "%s [%s] %s\n", cursor, checked, choice)
+	}
 
-    s += "\nPress q to quit.\n"
+	s.WriteString("\nPress q to quit.\n")
 
-    return tea.NewView(s)
+	return tea.NewView(s.String())
 }
 
 func main() {
-    p := tea.NewProgram(initialModel())
-    if _, err := p.Run(); err != nil {
-        fmt.Printf("Alas, there's been an error: %v", err)
-        os.Exit(1)
-    }
+	fmt.Println("Hello, World!")
 }
