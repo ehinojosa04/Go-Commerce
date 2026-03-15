@@ -45,7 +45,7 @@ func handleConnection(conn net.Conn) {
 	for {
 		message, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Printf("Connection closed (user %d)\n", sess.userID)
+			fmt.Printf("Connection closed (user %v)\n", sess.userID)
 			return
 		}
 
@@ -128,29 +128,50 @@ func handleConnection(conn net.Conn) {
 }
 
 func handleAuth(sess *session, parts []string, store *Models.Store) {
-	if len(parts) < 2 {
-		sess.sendLine("ERROR Usage: LOGIN <admin|consumer>")
+	if len(parts) < 3 {
+		sess.sendLine("ERROR Usage: REGISTER <username> <pass> <role> OR LOGIN <username> <pass>")
 		return
 	}
 
-	switch parts[0] {
+	command := strings.ToUpper(parts[0])
+	username := parts[1]
+	password := parts[2]
+
+	switch command {
 	case "REGISTER":
+		if len(parts) < 4 {
+			sess.sendLine("ERROR Usage: REGISTER <username> <pass> <admin|consumer>")
+			return
+		}
 
-		user := Models.NewUser(parts[1], parts[2], Models.Role(parts[3]))
+		role := Models.Role(strings.ToLower(parts[3]))
+		newUser := Models.NewUser(username, password, role)
 
-		if err := store.AddUser(*user); err != nil {
+		if err := store.AddUser(*newUser); err != nil {
 			sess.sendLine(fmt.Sprintf("ERROR %s", err.Error()))
 			return
 		}
 
-		sess.role = user.Role
-		sess.userID = user.UserID
+		sess.role = newUser.Role
+		sess.userID = newUser.UserID
 		sess.authed = true
 
-		sess.sendLine(fmt.Sprintf("OK Registered user %v as %v", sess.userID, sess.role))
+		sess.sendLine(fmt.Sprintf("OK Registered in user %v as %v", sess.userID, sess.role))
 		sess.sendLine("Type HELP to see available commands.")
 
 	case "LOGIN":
+		storedUser, err := store.ValidateUser(username, password)
+		if err != nil {
+			sess.sendLine(fmt.Sprintf("ERROR %s", err.Error()))
+			return
+		}
+
+		sess.role = storedUser.Role
+		sess.userID = storedUser.UserID
+		sess.authed = true
+
+		sess.sendLine(fmt.Sprintf("OK Logged in as %v user %v", sess.role, sess.userID))
+		sess.sendLine("Type HELP to see available commands.")
 	}
 }
 

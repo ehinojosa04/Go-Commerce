@@ -218,7 +218,7 @@ func (s *Store) PurchaseHistory() string {
 		if order == nil {
 			continue
 		}
-		result += fmt.Sprintf("  Order #%d | User: %d | Status: %s | Total: $%.2f\n",
+		result += fmt.Sprintf("  Order #%d | User: %v | Status: %s | Total: $%.2f\n",
 			order.ID, order.UserID, order.Status, order.Total)
 		for _, item := range order.Items {
 			name := fmt.Sprintf("Product#%d", item.ProductID)
@@ -292,6 +292,9 @@ func (s *Store) loadFromDisk() {
 }
 
 func (s *Store) AddUser(u User) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
 	if _, alreadyExists := s.Users[u.UserID]; alreadyExists {
 		return errors.New("user already exists")
 	}
@@ -299,4 +302,16 @@ func (s *Store) AddUser(u User) error {
 	s.Users[u.UserID] = &u
 	s.saveToDisk()
 	return nil
+}
+
+func (s *Store) ValidateUser(username string, password string) (*User, error) {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+
+	user, userExists := s.Users[username]
+	if !userExists || user.Password != password {
+		return nil, errors.New("invalid credentials")
+	}
+
+	return user, nil
 }
