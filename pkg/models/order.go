@@ -5,28 +5,7 @@ import (
 	"fmt"
 )
 
-type Order struct {
-	ID     int
-	Items  []OrderItem
-	Total  float64
-	Status OrderStatus
-}
-
 type OrderStatus string
-
-func (o *Order) CalculateTotal(products map[int]*Product) error {
-	total := 0.0
-
-	for _, item := range o.Items {
-		product := products[item.ProductID]
-		if product == nil {
-			return errors.New("Product not found")
-		}
-		total += product.Price * float64(item.Quantity)
-	}
-	o.Total = total
-	return nil
-}
 
 const (
 	Created   OrderStatus = "CREATED"
@@ -34,16 +13,41 @@ const (
 	Cancelled OrderStatus = "CANCELLED"
 )
 
-func newOrder(id int, items []OrderItem) *Order {
-	total := 0.0
-	status := Created
-	return &Order{ID: id, Items: items, Total: total, Status: status}
+type Order struct {
+	ID     int         `json:"id"`
+	UserID int         `json:"user_id"`
+	Items  []OrderItem `json:"items"`
+	Total  float64     `json:"total"`
+	Status OrderStatus `json:"status"`
 }
 
-func (o *Order) listOrderItems() {
-	fmt.Println("Products in order/cart:")
-	for _, product := range o.Items {
-		fmt.Println("Product: ", product.ProductID, "Quantity: ", product.Quantity)
+func (o *Order) CalculateTotal(products map[int]*Product) error {
+	total := 0.0
+	for _, item := range o.Items {
+		product := products[item.ProductID]
+		if product == nil {
+			return errors.New("product not found")
+		}
+		total += product.Price * float64(item.Quantity)
 	}
-	fmt.Println("Order Total: ", o.Total, "Order Status: ", o.Status, "")
+	o.Total = total
+	return nil
+}
+
+func newOrder(id int, userID int, items []OrderItem) *Order {
+	return &Order{
+		ID:     id,
+		UserID: userID,
+		Items:  items,
+		Total:  0,
+		Status: Created,
+	}
+}
+
+func (o *Order) String() string {
+	result := fmt.Sprintf("Order #%d | Status: %s | Total: $%.2f\n", o.ID, o.Status, o.Total)
+	for _, item := range o.Items {
+		result += fmt.Sprintf("  - Product %d x%d\n", item.ProductID, item.Quantity)
+	}
+	return result
 }

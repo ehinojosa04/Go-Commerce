@@ -7,18 +7,20 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 )
 
 type Store struct {
-	Products map[int]*Product
-	Orders   map[int]*Order
-	Mu       sync.RWMutex
+	Products map[int]*Product `json:"products"`
+	Orders   map[int]*Order   `json:"orders"`
+	Mu       sync.RWMutex     `json:"-"`
 }
 
 var (
 	instance *Store
 	once     sync.Once
+	dataPath = "store_data.json"
 )
 
 func GetStore() *Store {
@@ -27,187 +29,262 @@ func GetStore() *Store {
 			Products: make(map[int]*Product),
 			Orders:   make(map[int]*Order),
 		}
+		instance.loadFromDisk()
 	})
 	return instance
 }
 
-type Report struct {
-}
-
 func (s *Store) AddProduct(p Product) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
 	if _, alreadyExists := s.Products[p.ID]; alreadyExists {
-		return errors.New("Product already exists (Edit it instead)")
+		return errors.New("product already exists")
 	}
 	s.Products[p.ID] = &p
-	s.updateStore()
+	s.saveToDisk()
+	return nil
+}
+
+func (s *Store) DeleteProduct(productID int) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	if _, exists := s.Products[productID]; !exists {
+		return errors.New("product not found")
+	}
+	delete(s.Products, productID)
+	s.saveToDisk()
 	return nil
 }
 
 func (s *Store) GetProduct(productID int) (*Product, error) {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+
 	if product, exists := s.Products[productID]; exists {
 		return product, nil
-	} else {
-		return nil, errors.New("Product not found")
 	}
+	return nil, errors.New("product not found")
 }
 
 func (s *Store) GetProducts() []Product {
-	var products []Product
-	fmt.Println("Getting products...")
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+
+	products := make([]Product, 0, len(s.Products))
 	for _, product := range s.Products {
-		fmt.Println("Product: ", product.Name, "Price: ", product.Price, "Stock: ", product.Stock)
 		products = append(products, *product)
 	}
 	return products
 }
 
 func (s *Store) GetProductsString() string {
-	var result string
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
 
+	var result string
 	for _, product := range s.Products {
 		result += fmt.Sprintf(
-			"PRODUCT %d %s %.2f %d\n",
+			"  [%d] %s - $%.2f (stock: %d)\n",
 			product.ID,
 			product.Name,
 			product.Price,
 			product.Stock,
 		)
 	}
-
+	if result == "" {
+		return "  No products available.\n"
+	}
 	return result
 }
 
 func (s *Store) UpdateStock(productID int, quantity int) error {
-	if quantity <= 0 {
-		return errors.New("Quantity must be greater than 0")
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	if quantity < 0 {
+		return errors.New("quantity cannot be negative")
 	}
-	product := s.Products[productID]
-	if product == nil {
-		return errors.New("Product not found (Add it first)")
-	} else {
-		product.Stock = quantity
+	product, exists := s.Products[productID]
+	if !exists {
+		return errors.New("product not found")
 	}
-	s.updateStore()
+	product.Stock += quantity
+	s.saveToDisk()
 	return nil
 }
 
-func (s *Store) CreateOrder(items []OrderItem) (*Order, error) {
-	fmt.Println("Creating order...")
-	if items == nil {
-		return nil, errors.New("Order must have at least one item")
+func (s *Store) UpdatePrice(productID int, newPrice float64) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	if newPrice < 0 {
+		return errors.New("price cannot be negative")
 	}
+	product, exists := s.Products[productID]
+	if !exists {
+		return errors.New("product not found")
+	}
+	product.Price = newPrice
+	s.saveToDisk()
+	return nil
+}
+
+func (s *Store) CreateOrder(userID int, items []OrderItem) (*Order, error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	if len(items) == 0 {
+		return nil, errors.New("order must have at least one item")
+	}
+
+	for _, item := range items {
+		product, exists := s.Products[item.ProductID]
+		if !exists {
+			return nil, fmt.Errorf("product %d not found", item.ProductID)
+		}
+		if product.Stock < item.Quantity {
+			return nil, fmt.Errorf("insufficient stock for product %d (%s): have %d, want %d",
+				product.ID, product.Name, product.Stock, item.Quantity)
+		}
+	}
+
 	orderID := 0
 	for orderID == 0 || s.Orders[orderID] != nil {
-		orderID = rand.Int()
+		orderID = rand.Intn(999999) + 1
 	}
 
-	orderID = rand.Int()
-
-	store := GetStore()
-	store.Mu.Lock()
-	defer store.Mu.Unlock()
-	storeProducts := store.Products
-
-	o := newOrder(orderID, items)
-	err := o.CalculateTotal(storeProducts)
-	if err != nil {
-		fmt.Println("Error calculating total: ", err)
+	order := newOrder(orderID, userID, items)
+	if err := order.CalculateTotal(s.Products); err != nil {
 		return nil, err
 	}
-	store.Orders[orderID] = o
 
-	store.updateStore()
-	fmt.Println("Order completed: The ID for you order is: ", orderID)
-	return o, nil
+	for _, item := range items {
+		s.Products[item.ProductID].Stock -= item.Quantity
+	}
+
+	s.Orders[orderID] = order
+	s.saveToDisk()
+	return order, nil
 }
 
 func (s *Store) CompleteOrder(orderID int) error {
-	if order, exists := s.Orders[orderID]; exists {
-		order.Status = Completed
-		s.updateStore()
-		fmt.Println("Order completed: ", orderID)
-		return nil
-	} else {
-		return errors.New("Order not found")
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	order, exists := s.Orders[orderID]
+	if !exists {
+		return errors.New("order not found")
 	}
+	order.Status = Completed
+	s.saveToDisk()
+	return nil
 }
 
 func (s *Store) CancelOrder(orderID int) error {
-	if order, exists := s.Orders[orderID]; exists {
-		order.Status = Cancelled
-		s.updateStore()
-		fmt.Println("Order cancelled: ", orderID)
-		return nil
-	} else {
-		return errors.New("Order not found")
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	order, exists := s.Orders[orderID]
+	if !exists {
+		return errors.New("order not found")
 	}
+	order.Status = Cancelled
+
+	for _, item := range order.Items {
+		if product, ok := s.Products[item.ProductID]; ok {
+			product.Stock += item.Quantity
+		}
+	}
+
+	s.saveToDisk()
+	return nil
 }
 
-func (s *Store) SalesReport() {
-	fmt.Println("----------- SALES REPORT -----------")
+func (s *Store) PurchaseHistory() string {
 	s.Mu.RLock()
 	defer s.Mu.RUnlock()
-	var totalSales float64 = 0
+
+	if len(s.Orders) == 0 {
+		return "  No orders found.\n"
+	}
+
+	var result string
+	var totalRevenue float64
 	for _, order := range s.Orders {
-		if order.Status == Completed {
-			fmt.Println("Order ID: ", order.ID, "Total: ", order.Total)
-			totalSales += order.Total
+		if order == nil {
+			continue
+		}
+		result += fmt.Sprintf("  Order #%d | User: %d | Status: %s | Total: $%.2f\n",
+			order.ID, order.UserID, order.Status, order.Total)
+		for _, item := range order.Items {
+			name := fmt.Sprintf("Product#%d", item.ProductID)
+			if p, exists := s.Products[item.ProductID]; exists {
+				name = p.Name
+			}
+			result += fmt.Sprintf("    - %s x%d\n", name, item.Quantity)
+		}
+		if strings.EqualFold(string(order.Status), string(Completed)) {
+			// Use stored order.Total so revenue matches the per-order totals we display
+			// (item-based sum can be 0 if products were deleted or Items nil after JSON load)
+			totalRevenue += order.Total
 		}
 	}
-	fmt.Println("------------------------------------")
+	result += fmt.Sprintf("  --- Total Revenue (completed): $%.2f ---\n", totalRevenue)
+	return result
 }
 
-func (s *Store) updateStore() {
-	store := GetStore()
-	store.Mu.Lock()
-	defer store.Mu.Unlock()
+func (s *Store) UserOrderHistory(userID int) string {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
 
-	byteFile, err := json.MarshalIndent(store, "", " ")
-
-	if err != nil {
-		log.Panicf("Could not marshal: %v", err)
-	}
-	err = os.WriteFile("orders.json", byteFile, 0644)
-	if err != nil {
-		log.Panicf("Could not write file: %v", err)
-	}
-}
-
-func readJsonFile() {
-	var byteFile, errFile = os.ReadFile("orders.json")
-	if errFile != nil {
-		log.Panicf("Could not read JSON file: %v", errFile)
-	}
-	store := GetStore()
-	store.Mu.Lock()
-	defer store.Mu.Unlock()
-	err := json.Unmarshal(byteFile, &store)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func main() {
-	file, err := os.Open("orders.json")
-	if err != nil {
-		fmt.Println("Error while creating file: ", err)
-		fmt.Println("Creating new file...")
-		_, CreateErr := os.Create("contacts.json")
-		if CreateErr != nil {
-			fmt.Println("Error while creating file: ", CreateErr)
-			return
+	var result string
+	found := false
+	for _, order := range s.Orders {
+		if order.UserID != userID {
+			continue
 		}
-
-	}
-	if err == nil {
-		fmt.Println("Loading data from existing file...")
-		readJsonFile()
-	}
-
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-			fmt.Println("Error while closing file: ", err)
+		found = true
+		result += fmt.Sprintf("  Order #%d | Status: %s | Total: $%.2f\n",
+			order.ID, order.Status, order.Total)
+		for _, item := range order.Items {
+			name := fmt.Sprintf("Product#%d", item.ProductID)
+			if p, exists := s.Products[item.ProductID]; exists {
+				name = p.Name
+			}
+			result += fmt.Sprintf("    - %s x%d\n", name, item.Quantity)
 		}
-	}(file)
+	}
+	if !found {
+		return "  No orders found.\n"
+	}
+	return result
+}
+
+func (s *Store) saveToDisk() {
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		log.Printf("Failed to marshal store: %v", err)
+		return
+	}
+	if err := os.WriteFile(dataPath, data, 0644); err != nil {
+		log.Printf("Failed to write store data: %v", err)
+	}
+}
+
+func (s *Store) loadFromDisk() {
+	data, err := os.ReadFile(dataPath)
+	if err != nil {
+		return
+	}
+	if err := json.Unmarshal(data, s); err != nil {
+		log.Printf("Failed to unmarshal store data: %v", err)
+	}
+	if s.Products == nil {
+		s.Products = make(map[int]*Product)
+	}
+	if s.Orders == nil {
+		s.Orders = make(map[int]*Order)
+	}
 }
