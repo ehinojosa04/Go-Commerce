@@ -141,17 +141,6 @@ func (s *Store) CreateOrder(userID string, items []OrderItem) (*Order, error) {
 		return nil, errors.New("order must have at least one item")
 	}
 
-	for _, item := range items {
-		product, exists := s.Products[item.ProductID]
-		if !exists {
-			return nil, fmt.Errorf("product %d not found", item.ProductID)
-		}
-		if product.Stock < item.Quantity {
-			return nil, fmt.Errorf("insufficient stock for product %d (%s): have %d, want %d",
-				product.ID, product.Name, product.Stock, item.Quantity)
-		}
-	}
-
 	orderID := 0
 	for orderID == 0 || s.Orders[orderID] != nil {
 		orderID = rand.Intn(999999) + 1
@@ -160,10 +149,6 @@ func (s *Store) CreateOrder(userID string, items []OrderItem) (*Order, error) {
 	order := newOrder(orderID, userID, items)
 	if err := order.CalculateTotal(s.Products); err != nil {
 		return nil, err
-	}
-
-	for _, item := range items {
-		s.Products[item.ProductID].Stock -= item.Quantity
 	}
 
 	s.Orders[orderID] = order
@@ -314,4 +299,33 @@ func (s *Store) ValidateUser(username string, password string) (*User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *Store) ReserveStock(productID int, quantity int) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	product, exists := s.Products[productID]
+	if !exists {
+		return errors.New("product not found")
+	}
+	if product.Stock < quantity {
+		return fmt.Errorf("insufficient stock for product %d", productID)
+	}
+	product.Stock -= quantity
+	s.saveToDisk()
+	return nil
+}
+
+func (s *Store) ReleaseStock(productID int, quantity int) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	product, exists := s.Products[productID]
+	if !exists {
+		return nil
+	}
+	product.Stock += quantity
+	s.saveToDisk()
+	return nil
 }

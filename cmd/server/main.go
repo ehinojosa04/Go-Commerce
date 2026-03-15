@@ -36,6 +36,16 @@ func handleConnection(conn net.Conn) {
 	}
 
 	store := Models.GetStore()
+
+	defer func() {
+		if len(sess.cart) > 0 {
+			for _, item := range sess.cart {
+				store.ReleaseStock(item.ProductID, item.Quantity)
+			}
+		}
+		conn.Close()
+	}()
+
 	reader := bufio.NewReader(conn)
 
 	sess.sendLine("Welcome to Go-Commerce!")
@@ -103,6 +113,9 @@ func handleConnection(conn net.Conn) {
 
 		case "CLEAR_CART":
 			requireConsumer(sess, func() {
+				for _, item := range sess.cart {
+					store.ReleaseStock(item.ProductID, item.Quantity)
+				}
 				sess.cart = make([]Models.OrderItem, 0)
 				sess.sendLine("OK Cart cleared.")
 			})
@@ -334,27 +347,21 @@ func handleAddToCart(sess *session, store *Models.Store, parts []string) {
 		return
 	}
 
-	product, err := store.GetProduct(productID)
-	if err != nil {
+	if err := store.ReserveStock(productID, qty); err != nil {
 		sess.sendLine(fmt.Sprintf("ERROR %s", err.Error()))
-		return
-	}
-
-	if product.Stock < qty {
-		sess.sendLine(fmt.Sprintf("ERROR Insufficient stock. Available: %d", product.Stock))
 		return
 	}
 
 	for i, item := range sess.cart {
 		if item.ProductID == productID {
 			sess.cart[i].Quantity += qty
-			sess.sendLine(fmt.Sprintf("OK Updated %s in cart (total qty: %d).", product.Name, sess.cart[i].Quantity))
+			sess.sendLine(fmt.Sprintf("OK Updated cart (total qty: %d).", sess.cart[i].Quantity))
 			return
 		}
 	}
 
 	sess.cart = append(sess.cart, Models.OrderItem{ProductID: productID, Quantity: qty})
-	sess.sendLine(fmt.Sprintf("OK Added %s x%d to cart.", product.Name, qty))
+	sess.sendLine(fmt.Sprintf("OK Added x%d to cart.", qty))
 }
 
 func handleViewCart(sess *session, store *Models.Store) {
