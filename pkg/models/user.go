@@ -8,13 +8,13 @@ const (
 )
 
 type User struct {
-	ID   int
-	Name string
-	Role Role
+	UserID   string
+	Password string
+	Role     Role
 }
 
-func NewUser(id int, name string, role Role) *User {
-	return &User{ID: id, Name: name, Role: role}
+func NewUser(name string, password string, role Role) *User {
+	return &User{UserID: name, Password: password, Role: role}
 }
 
 func (u *User) IsAdmin() bool {

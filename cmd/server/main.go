@@ -13,7 +13,7 @@ import (
 type session struct {
 	conn   net.Conn
 	role   Models.Role
-	userID int
+	userID string
 	cart   []Models.OrderItem
 	authed bool
 }
@@ -58,11 +58,11 @@ func handleConnection(conn net.Conn) {
 		command := strings.ToUpper(parts[0])
 
 		if !sess.authed {
-			if command != "LOGIN" {
+			if command != "LOGIN" && command != "REGISTER" {
 				sess.sendLine("ERROR You must login first. Use: LOGIN <admin|consumer>")
 				continue
 			}
-			handleLogin(sess, parts)
+			handleAuth(sess, parts, store)
 			continue
 		}
 
@@ -127,28 +127,30 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func handleLogin(sess *session, parts []string) {
+func handleAuth(sess *session, parts []string, store *Models.Store) {
 	if len(parts) < 2 {
 		sess.sendLine("ERROR Usage: LOGIN <admin|consumer>")
 		return
 	}
 
-	role := strings.ToLower(parts[1])
-	switch Models.Role(role) {
-	case Models.Admin:
-		sess.role = Models.Admin
-		sess.userID = rand.Intn(9000) + 1000
+	switch parts[0] {
+	case "REGISTER":
+
+		user := Models.NewUser(parts[1], parts[2], Models.Role(parts[3]))
+
+		if err := store.AddUser(*user); err != nil {
+			sess.sendLine(fmt.Sprintf("ERROR %s", err.Error()))
+			return
+		}
+
+		sess.role = user.Role
+		sess.userID = user.UserID
 		sess.authed = true
-		sess.sendLine(fmt.Sprintf("OK Logged in as admin (ID: %d)", sess.userID))
+
+		sess.sendLine(fmt.Sprintf("OK Registered user %v as %v", sess.userID, sess.role))
 		sess.sendLine("Type HELP to see available commands.")
-	case Models.Consumer:
-		sess.role = Models.Consumer
-		sess.userID = rand.Intn(9000) + 1000
-		sess.authed = true
-		sess.sendLine(fmt.Sprintf("OK Logged in as consumer (ID: %d)", sess.userID))
-		sess.sendLine("Type HELP to see available commands.")
-	default:
-		sess.sendLine("ERROR Invalid role. Use: LOGIN <admin|consumer>")
+
+	case "LOGIN":
 	}
 }
 

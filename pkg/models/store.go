@@ -14,6 +14,7 @@ import (
 type Store struct {
 	Products map[int]*Product `json:"products"`
 	Orders   map[int]*Order   `json:"orders"`
+	Users    map[string]*User `json:"users"`
 	Mu       sync.RWMutex     `json:"-"`
 }
 
@@ -28,6 +29,7 @@ func GetStore() *Store {
 		instance = &Store{
 			Products: make(map[int]*Product),
 			Orders:   make(map[int]*Order),
+			Users:    make(map[string]*User),
 		}
 		instance.loadFromDisk()
 	})
@@ -131,7 +133,7 @@ func (s *Store) UpdatePrice(productID int, newPrice float64) error {
 	return nil
 }
 
-func (s *Store) CreateOrder(userID int, items []OrderItem) (*Order, error) {
+func (s *Store) CreateOrder(userID string, items []OrderItem) (*Order, error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -235,7 +237,7 @@ func (s *Store) PurchaseHistory() string {
 	return result
 }
 
-func (s *Store) UserOrderHistory(userID int) string {
+func (s *Store) UserOrderHistory(userID string) string {
 	s.Mu.RLock()
 	defer s.Mu.RUnlock()
 
@@ -287,4 +289,14 @@ func (s *Store) loadFromDisk() {
 	if s.Orders == nil {
 		s.Orders = make(map[int]*Order)
 	}
+}
+
+func (s *Store) AddUser(u User) error {
+	if _, alreadyExists := s.Users[u.UserID]; alreadyExists {
+		return errors.New("user already exists")
+	}
+
+	s.Users[u.UserID] = &u
+	s.saveToDisk()
+	return nil
 }

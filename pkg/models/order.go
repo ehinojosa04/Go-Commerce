@@ -15,7 +15,7 @@ const (
 
 type Order struct {
 	ID     int         `json:"id"`
-	UserID int         `json:"user_id"`
+	UserID string      `json:"user_id"`
 	Items  []OrderItem `json:"items"`
 	Total  float64     `json:"total"`
 	Status OrderStatus `json:"status"`
@@ -34,7 +34,7 @@ func (o *Order) CalculateTotal(products map[int]*Product) error {
 	return nil
 }
 
-func newOrder(id int, userID int, items []OrderItem) *Order {
+func newOrder(id int, userID string, items []OrderItem) *Order {
 	return &Order{
 		ID:     id,
 		UserID: userID,
