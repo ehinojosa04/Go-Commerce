@@ -1,4 +1,4 @@
-package models
+package Models
 
 import (
 	"encoding/json"
@@ -59,6 +59,22 @@ func (s *Store) GetProducts() []Product {
 		products = append(products, *product)
 	}
 	return products
+}
+
+func (s *Store) GetProductsString() string {
+	var result string
+
+	for _, product := range s.Products {
+		result += fmt.Sprintf(
+			"PRODUCT %d %s %.2f %d\n",
+			product.ID,
+			product.Name,
+			product.Price,
+			product.Stock,
+		)
+	}
+
+	return result
 }
 
 func (s *Store) UpdateStock(productID int, quantity int) error {

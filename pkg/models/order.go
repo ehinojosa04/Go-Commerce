@@ -1,4 +1,4 @@
-package models
+package Models
 
 import (
 	"errors"
@@ -46,8 +46,4 @@ func (o *Order) listOrderItems() {
 		fmt.Println("Product: ", product.ProductID, "Quantity: ", product.Quantity)
 	}
 	fmt.Println("Order Total: ", o.Total, "Order Status: ", o.Status, "")
-}
-
-func main() {
-
 }
