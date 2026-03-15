@@ -25,6 +25,7 @@ type styles struct {
 	status      lipgloss.Style
 	outputBox   lipgloss.Style
 	outputTitle lipgloss.Style
+	errorTitle  lipgloss.Style
 	roleTitle   lipgloss.Style
 }
 
@@ -46,6 +47,9 @@ func newStyles(darkBG bool) styles {
 			MarginTop(1),
 		outputTitle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#7D56F4")).
+			Bold(true),
+		errorTitle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF4444")).
 			Bold(true),
 		roleTitle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FFFDF5")).
@@ -101,6 +105,7 @@ const (
 	stateLoadingQuit
 	stateMenu
 	stateInput
+	stateAuthError
 	stateViewingOutput
 	stateConnectionFailed
 	stateConnectionLost
@@ -331,9 +336,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.lastSentCommand != "" {
 				m.state = stateViewingOutput
 			} else {
-				// Ya nos autenticamos (LOGIN o REGISTER fue enviado con éxito)
-				m.state = stateMenu
-				m.buildMenuList()
+				if strings.Contains(m.serverOut, "ERROR") {
+					m.state = stateAuthError
+				} else {
+					if m.authAction == "LOGIN" {
+						if strings.Contains(m.serverOut, "as admin") {
+							m.role = "admin"
+						} else {
+							m.role = "consumer"
+						}
+					}
+					m.state = stateMenu
+					m.buildMenuList()
+				}
 			}
 		}
 		return m, nil
@@ -429,6 +444,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.state = stateLoading
 			return m, readServerCmd(m.conn)
+		}
+	}
+
+	// Auth error: let the user go back to the auth menu
+	if m.state == stateAuthError {
+		if k, ok := msg.(tea.KeyPressMsg); ok && k.String() == "enter" {
+			m.authAction = ""
+			m.authUsername = ""
+			m.authPassword = ""
+			m.serverOut = ""
+			m.state = stateAuthMenu
+			m.buildAuthList()
+			return m, nil
 		}
 	}
 
@@ -662,6 +690,10 @@ func (m model) View() tea.View {
 		b.WriteString(m.styles.title.Render(" Contraseña ") + "\n\n")
 		b.WriteString(m.input.View())
 		b.WriteString("\n\n  (enter=enviar, esc=cancelar)")
+	case stateAuthError:
+		b.WriteString(m.styles.outputBox.Render(
+			m.styles.errorTitle.Render(" Authentication Failed ") + "\n\n  " + strings.TrimSpace(m.serverOut) + "\n\n  " + m.styles.status.Render("Press Enter to try again"),
+		))
 	case stateInput:
 		b.WriteString(m.styles.title.Render(" "+m.inputPrompt+" ") + "\n\n")
 		b.WriteString(m.input.View())
