@@ -1,0 +1,34 @@
+{
+  "products": {
+    "98590": {
+      "id": 98590,
+      "name": "EmiNekko",
+      "price": 69.69,
+      "stock": 994
+    },
+    "99177": {
+      "id": 99177,
+      "name": "Verdura",
+      "price": 89,
+      "stock": 44
+    }
+  },
+  "orders": {
+    "706196": {
+      "id": 706196,
+      "user_id": 6530,
+      "items": [
+        {
+          "product_id": 99177,
+          "quantity": 5
+        },
+        {
+          "product_id": 98590,
+          "quantity": 5
+        }
+      ],
+      "total": 793.45,
+      "status": "COMPLETED"
+    }
+  }
+}
