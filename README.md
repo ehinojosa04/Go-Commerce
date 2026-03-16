@@ -337,14 +337,11 @@ Select **"My Orders"** to view the order history for the current session's user 
 1. **User Registration & Authentication**
    Persist user accounts (username + hashed password) so that consumers can log out and reconnect later while retaining their order history under the same identity. Currently each session is assigned a random ephemeral user ID.
 
-2. **Product Reservation / Cart Locking**
-   When a consumer adds a product to their cart, temporarily reserve (block) those units so they cannot be claimed by another consumer before checkout. Reservations would expire after a configurable timeout, releasing the stock back to the pool.
-
-3. **Order Cancellation for Consumers**
+2. **Order Cancellation for Consumers**
    Allow consumers to cancel a `CREATED` or `COMPLETED` order within a defined window. Cancellation would restore the deducted stock and mark the order as `CANCELLED`, with the business rule that a cancelled order cannot be re-completed.
 
-4. **Product Search & Filtering**
+3. **Product Search & Filtering**
    Add `SEARCH_PRODUCTS <keyword>` and `FILTER_PRODUCTS <min_price> <max_price>` commands so consumers with large catalogues can quickly find what they need without scrolling through every item.
 
-5. **Admin Audit Log**
+4. **Admin Audit Log**
    Write every administrative action (product added, price changed, stock updated, product deleted) to a structured log file with a timestamp, admin user ID, and the before/after values. This would satisfy audit and compliance requirements and complement the existing `store_data.json` persistence.

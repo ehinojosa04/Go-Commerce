@@ -3,8 +3,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"log"
 	"math/rand"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	Models "tui/pkg/models"
@@ -55,7 +58,7 @@ func handleConnection(conn net.Conn) {
 	for {
 		message, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Printf("Connection closed (user %v)\n", sess.userID)
+			log.Printf("Connection closed (user %v)\n", sess.userID)
 			return
 		}
 
@@ -66,6 +69,23 @@ func handleConnection(conn net.Conn) {
 
 		parts := strings.Fields(message)
 		command := strings.ToUpper(parts[0])
+
+		logMessage := message
+		if command == "LOGIN" || command == "REGISTER" {
+			if len(parts) >= 3 {
+				partsCopy := make([]string, len(parts))
+				copy(partsCopy, parts)
+				partsCopy[2] = "****" // Mask the password
+				logMessage = strings.Join(partsCopy, " ")
+			}
+		}
+
+		userDisplay := sess.userID
+		if userDisplay == "" {
+			userDisplay = "unauthenticated"
+		}
+
+		log.Printf("[IP: %s | User: %s | Role: %s] %s", conn.RemoteAddr(), userDisplay, sess.role, logMessage)
 
 		if !sess.authed {
 			if command != "LOGIN" && command != "REGISTER" {
@@ -408,6 +428,16 @@ func handleCheckout(sess *session, store *Models.Store) {
 }
 
 func main() {
+	logFile, err := os.OpenFile("interactions.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		panic(fmt.Errorf("failed to open log file: %v", err))
+	}
+	defer logFile.Close()
+
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(multiWriter)
+	log.SetFlags(log.Ldate | log.Ltime)
+
 	listener, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		panic(err)
@@ -422,7 +452,7 @@ func main() {
 			fmt.Println("Error accepting connection:", err)
 			continue
 		}
-		fmt.Println("New connection from:", conn.RemoteAddr())
+		log.Println("New connection from:", conn.RemoteAddr())
 		go handleConnection(conn)
 	}
 }
