@@ -342,6 +342,3 @@ Select **"My Orders"** to view the order history for the current session's user 
 
 3. **Product Search & Filtering**
    Add `SEARCH_PRODUCTS <keyword>` and `FILTER_PRODUCTS <min_price> <max_price>` commands so consumers with large catalogues can quickly find what they need without scrolling through every item.
-
-4. **Admin Audit Log**
-   Write every administrative action (product added, price changed, stock updated, product deleted) to a structured log file with a timestamp, admin user ID, and the before/after values. This would satisfy audit and compliance requirements and complement the existing `store_data.json` persistence.
